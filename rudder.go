@@ -71,8 +71,12 @@ func (r *ReleaseModuleServiceServer) Version(ctx context.Context, in *rudderAPI.
 // InstallRelease creates a release using kubeClient.Create
 func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rudderAPI.InstallReleaseRequest) (*rudderAPI.InstallReleaseResponse, error) {
 	grpclog.Print("install")
-	b := bytes.NewBufferString(in.Release.Manifest)
-	err := kubeClient.Create(in.Release.Namespace, b, 500, false)
+
+	b, err := wrapManifest(in.Release)
+	if err != nil {
+		grpclog.Printf("error wrapping release: %s", err)
+	}
+	err = kubeClient.Create(in.Release.Namespace, b, 500, false)
 	if err != nil {
 		grpclog.Printf("error when creating release: %v", err)
 	}
