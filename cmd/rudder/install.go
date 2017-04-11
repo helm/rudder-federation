@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main // import "k8s.io/helm/cmd/rudder"
+package main
 
 import (
 	"bytes"
@@ -25,9 +25,12 @@ import (
 	"github.com/technosophos/moniker"
 	"google.golang.org/grpc/grpclog"
 
+	//todo: change to k8s.com/helm after rudder is merged
 	"k8s.io/helm/pkg/proto/hapi/chart"
+	//"github.com/nebril/helm/pkg/proto/hapi/release"
 	"k8s.io/helm/pkg/proto/hapi/release"
-	"k8s.io/helm/pkg/releaseutil"
+
+	"github.com/nebril/rudder-appcontroller/pkg/releaseutil"
 )
 
 type Dependency struct {

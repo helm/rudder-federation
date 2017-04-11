@@ -26,15 +26,17 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 
-	"k8s.io/helm/pkg/kube"
-	rudderAPI "k8s.io/helm/pkg/proto/hapi/rudder"
-	"k8s.io/helm/pkg/rudder"
-	"k8s.io/helm/pkg/tiller"
-	"k8s.io/helm/pkg/version"
+	//todo: change to k8s.com/helm after rudder is merged
+	"github.com/nebril/helm/pkg/kube"
+	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
+	"github.com/nebril/helm/pkg/rudder"
+	"github.com/nebril/helm/pkg/version"
 )
 
 var kubeClient *kube.Client
 var clientset internalclientset.Interface
+
+var grpcAddr = fmt.Sprintf("127.0.0.1:%d", rudder.GrpcPort)
 
 func main() {
 	var err error
@@ -44,7 +46,7 @@ func main() {
 		grpclog.Fatalf("Cannot initialize Kubernetes connection: %s", err)
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rudder.GrpcAddr))
+	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		grpclog.Fatalf("failed to listen: %v", err)
 	}
@@ -83,34 +85,11 @@ func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rud
 	return &rudderAPI.InstallReleaseResponse{}, err
 }
 
-// DeleteRelease deletes a provided release
+// DeleteRelease is not implemented
 func (r *ReleaseModuleServiceServer) DeleteRelease(ctx context.Context, in *rudderAPI.DeleteReleaseRequest) (*rudderAPI.DeleteReleaseResponse, error) {
 	grpclog.Print("delete")
 
-	resp := &rudderAPI.DeleteReleaseResponse{}
-	rel := in.Release
-	vs, err := tiller.GetVersionSet(clientset.Discovery())
-	if err != nil {
-		return resp, fmt.Errorf("Could not get apiVersions from Kubernetes: %v", err)
-	}
-
-	kept, errs := tiller.DeleteRelease(rel, vs, kubeClient)
-	rel.Manifest = kept
-
-	allErrors := ""
-	for _, e := range errs {
-		allErrors = allErrors + "\n" + e.Error()
-	}
-
-	if len(allErrors) > 0 {
-		err = fmt.Errorf(allErrors)
-	} else {
-		err = nil
-	}
-
-	return &rudderAPI.DeleteReleaseResponse{
-		Release: rel,
-	}, err
+	return &rudderAPI.DeleteReleaseResponse{}, nil
 }
 
 // RollbackRelease rolls back the release

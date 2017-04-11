@@ -1,0 +1,27 @@
+package: github.com/nebril/rudder-appcontroller
+import:
+- package: github.com/Mirantis/k8s-appcontroller
+  subpackages:
+  - cmd/format
+- package: github.com/nebril/helm
+  version: c5bcca33fd13fb965771ac70238e54a68214813b
+  subpackages:
+  - pkg/kube
+  - pkg/proto/hapi/chart
+  - pkg/proto/hapi/release
+  - pkg/proto/hapi/rudder
+  - pkg/releaseutil
+  - pkg/rudder
+  - pkg/tiller
+  - pkg/version
+- package: github.com/technosophos/moniker
+- package: golang.org/x/net
+  subpackages:
+  - context
+- package: google.golang.org/grpc
+  subpackages:
+  - grpclog
+- package: k8s.io/kubernetes
+  subpackages:
+  - pkg/client/clientset_generated/internalclientset
+- package: github.com/ghodss/yaml
