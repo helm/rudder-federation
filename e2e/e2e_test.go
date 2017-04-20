@@ -52,14 +52,21 @@ var _ = Describe("Basic Suite", func() {
 		By("Removing namespace")
 		DeleteNS(clientset, namespace)
 		By("Removing tiller")
-		Expect(helm.DeleteTiller(false)).NotTo(HaveOccurred())
+		helm.DeleteTiller(false)
 	})
 
-	It("Should be possible to create/delete/update and check status of wordpress chart", func() {
+	It("Should be possible to create/delete/upgrade/rollback and check status of wordpress chart", func() {
+		chartName := "stable/wordpress"
 		By("Install chart stable/wordpress")
-		releaseName, err := helm.Install("stable/wordpress")
+		releaseName, err := helm.Install(chartName, nil)
 		Expect(err).NotTo(HaveOccurred())
 		By("Check status of release " + releaseName)
 		Expect(helm.Status(releaseName)).NotTo(HaveOccurred())
+		By("Upgrading release " + releaseName)
+		Expect(helm.Upgrade(chartName, releaseName, map[string]string{"image": "bitnami/wordpress:4.7.3-r1"})).NotTo(HaveOccurred())
+		By("Rolling back release " + releaseName + "to a first revision")
+		Expect(helm.Rollback(releaseName, 1)).NotTo(HaveOccurred())
+		By("Deleting release " + releaseName)
+		Expect(helm.Delete(releaseName)).NotTo(HaveOccurred())
 	})
 })
