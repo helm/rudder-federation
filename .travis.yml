@@ -1,0 +1,9 @@
+sudo: required
+language: go
+services:
+    - docker
+go:
+  - 1.7
+script:
+  - make bootstrap
+  - make e2e
