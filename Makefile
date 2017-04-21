@@ -3,7 +3,7 @@ IMAGE_PREFIX      ?= kubernetes-helm-rudder-appcontroller
 SHORT_NAME        ?= rudder
 DIST_DIRS         = find * -type d -exec
 APP               = rudder
-PACKAGE           = github.com/nebril/rudder-appcontroller
+PACKAGE           = github.com/helm/rudder-appcontroller
 
 # go option
 GO        ?= go

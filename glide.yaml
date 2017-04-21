@@ -1,4 +1,4 @@
-package: github.com/nebril/rudder-appcontroller
+package: github.com/helm/rudder-appcontroller
 import:
 - package: github.com/Mirantis/k8s-appcontroller
   subpackages:

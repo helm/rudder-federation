@@ -30,7 +30,7 @@ import (
 	//"github.com/nebril/helm/pkg/proto/hapi/release"
 	"k8s.io/helm/pkg/proto/hapi/release"
 
-	"github.com/nebril/rudder-appcontroller/pkg/releaseutil"
+	"github.com/helm/rudder-appcontroller/pkg/releaseutil"
 )
 
 type Dependency struct {
