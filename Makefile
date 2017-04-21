@@ -4,7 +4,7 @@ SHORT_NAME        ?= rudder
 DIST_DIRS         = find * -type d -exec
 APP               = rudder
 PACKAGE           = github.com/helm/rudder-appcontroller
-IMAGE_REPO        = mirantis/rudder-appcontroller
+IMAGE_REPO        = helm/rudder-appcontroller
 
 # go option
 GO        ?= go
