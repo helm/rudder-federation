@@ -25,3 +25,9 @@ import:
   subpackages:
   - pkg/client/clientset_generated/internalclientset
 - package: github.com/ghodss/yaml
+- package: github.com/onsi/ginkgo
+  version: v1.3.1
+- package: github.com/onsi/gomega
+  version: v1.1.0
+- package: k8s.io/client-go
+  version: v2.0.0

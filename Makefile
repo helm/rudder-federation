@@ -4,6 +4,7 @@ SHORT_NAME        ?= rudder
 DIST_DIRS         = find * -type d -exec
 APP               = rudder
 PACKAGE           = github.com/helm/rudder-appcontroller
+IMAGE_REPO        = helm/rudder-appcontroller
 
 # go option
 GO        ?= go
@@ -15,6 +16,12 @@ LDFLAGS   :=
 GOFLAGS   :=
 BINDIR    := $(CURDIR)/bin
 BINARIES  := rudder
+
+# dind options
+K8S_CLUSTER_MARKER = .k8s-cluster
+K8S_VERSION ?= v1.5
+HELM_BINARY_PATH ?= /tmp/
+
 
 # Required for globs to work correctly
 SHELL=/bin/bash
@@ -33,13 +40,13 @@ docker-binary:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -o $(BINDIR)/rudder $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LDFLAGS)' ${PACKAGE}/cmd/rudder
 
 .PHONY: docker-build
-docker-build: check-docker docker-binary
-	docker build --rm -t ${IMAGE} rootfs
-	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+docker-build: docker-binary
+	docker build --rm -t $(IMAGE_REPO) rootfs
 
 .PHONY: clean
 clean:
 	@rm -rf $(BINDIR) ./rootfs/rudder
+	-rm e2e.test
 
 HAS_GLIDE := $(shell command -v glide;)
 HAS_GOX := $(shell command -v gox;)
@@ -61,3 +68,32 @@ endif
 	go build -o bin/protoc-gen-go ./vendor/github.com/golang/protobuf/protoc-gen-go
 
 include versioning.mk
+
+
+.PHONY: img-in-dind
+img-in-dind: docker-build $(K8S_CLUSTER_MARKER)
+	IMAGE_REPO=$(IMAGE_REPO) ./scripts/import.sh
+
+.PHONY: e2e
+e2e: $(K8S_CLUSTER_MARKER) img-in-dind prepare-helm
+	go test -c -o e2e.test ./e2e/
+	PATH=$(PATH):$(HELM_BINARY_PATH)/linux-amd64 ./e2e.test --cluster-url=http://0.0.0.0:8080
+
+.PHONY: clean-all
+clean-all: clean clean-k8s
+
+.PHONY: clean-k8s
+clean-k8s:
+	./kubeadm-dind-cluster/fixed/dind-cluster-$(K8S_VERSION).sh clean
+	-rm $(K8S_CLUSTER_MARKER)
+
+$(K8S_CLUSTER_MARKER):
+	if [ ! -d "kubeadm-dind-cluster" ]; then git clone https://github.com/Mirantis/kubeadm-dind-cluster.git; fi
+	./kubeadm-dind-cluster/fixed/dind-cluster-$(K8S_VERSION).sh up
+	touch $(K8S_CLUSTER_MARKER)
+
+.PHONE: prepare-helm
+prepare-helm:
+	pushd $(HELM_BINARY_PATH) \
+	&& curl https://kubernetes-helm.storage.googleapis.com/helm-v2.3.0-linux-amd64.tar.gz > helm.tar.gz \
+	&& tar xf helm.tar.gz && popd
