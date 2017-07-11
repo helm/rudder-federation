@@ -90,3 +90,94 @@ status:
 	}
 	fmt.Println(s)
 }
+
+func TestSplitManifestForFed(t *testing.T) {
+
+	manifest := `---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp4-mariadb
+type: Opaque
+data:
+  mariadb-root-password: ""
+  mariadb-password: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp4-mariadb
+data:
+  my.cnf: "trolo"
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: wp4-wordpress
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "10Gi"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: wp4-wordpress
+spec:
+  replicas: 1
+---`
+
+	expectedFederated := `---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp4-mariadb
+type: Opaque
+data:
+  mariadb-root-password: ""
+  mariadb-password: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wp4-mariadb
+data:
+  my.cnf: "trolo"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: wp4-wordpress
+spec:
+  replicas: 1
+---`
+
+	expectedLocal := `---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: wp4-wordpress
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "10Gi"
+---`
+
+	federated, local, err := SplitManifestForFed(manifest)
+
+	if err != nil {
+		t.Errorf("error not nil, got %v", err)
+	}
+
+	if federated != expectedFederated {
+		t.Errorf("federated other than expected. expected:\n%v\ngot:\n%v", expectedFederated, federated)
+	}
+
+	if local != expectedLocal {
+		t.Errorf("local other than expected. expected:\n%v\ngot:\n%v", expectedLocal, local)
+	}
+}

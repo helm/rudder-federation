@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"strings"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -37,6 +38,8 @@ import (
 	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
 	"github.com/nebril/helm/pkg/rudder"
 	"github.com/nebril/helm/pkg/version"
+
+	"github.com/nebril/rudder-appcontroller/pkg/releaseutil"
 )
 
 var kubeClient *kube.Client
@@ -92,9 +95,17 @@ func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rud
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
+	//TODO use federated
+	_, local, err := SplitManifestForFed(in.Release.Manifest)
+
+	if err != nil {
+		return &rudderAPI.InstallReleaseResponse{}, err
+	}
+
 	for _, c := range clients {
-		grpclog.Printf("installing in %s", c.SchemaCacheDir)
-		err := c.Create(in.Release.Namespace, bytes.NewBufferString(in.Release.Manifest), 500, false)
+		config, _ := c.ClientConfig()
+		grpclog.Printf("installing in %s", config.Host)
+		err := c.Create(in.Release.Namespace, bytes.NewBufferString(local), 500, false)
 		if err != nil {
 			grpclog.Printf("error when creating release: %v", err)
 		}
@@ -174,12 +185,35 @@ func makeClient(cluster federation.Cluster) *kube.Client {
 	return kube.New(clientconfig)
 }
 
-func getFederationClient() (*fedclient.Clientset, error) {
-	c := &rest.Config{}
-	c.Host = "https://172.28.0.4:31969"
+func SplitManifestForFed(manifest string) (fed string, local string, err error) {
+	localKinds := map[string]bool{
+		"PersistentVolumeClaim": true,
+	}
 
+	objects, err := releaseutil.SplitManifestsWithHeads(manifest)
+	if err != nil {
+		return
+	}
+
+	local = "---"
+	fed = "---"
+
+	for _, o := range objects {
+		if localKinds[o.Kind] {
+			local += "\n" + strings.Trim(o.Content, "- \t\n") + "\n---"
+		} else {
+			fed += "\n" + strings.Trim(o.Content, "- \t\n") + "\n---"
+		}
+	}
+
+	return
+}
+
+var federationConfig = &rest.Config{
 	//TODO: don't hardcode this xD
-	c.CAData = []byte(`-----BEGIN CERTIFICATE-----
+	Host: "https://172.28.0.4:31969",
+	TLSClientConfig: rest.TLSClientConfig{
+		CAData: []byte(`-----BEGIN CERTIFICATE-----
 MIICyDCCAbCgAwIBAgIBADANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwpmZWRl
 cmF0aW9uMB4XDTE3MDcwNjExMjgyNFoXDTI3MDcwNDExMjgyNFowFTETMBEGA1UE
 AxMKZmVkZXJhdGlvbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJck
@@ -195,9 +229,8 @@ meadejLumR5Y2qOjn8LdNwlvl3EJEPwx+GwpaQ0KhY03fasPMJJWBYWos+ok1BKE
 DKw8c9Skos+XlsEk9CSIGL/2qhJePC1Ka4ZOpBZiY1ISULA+p2IPZGMl4boP7Hma
 4FFE1fO2+YN1FZxRIzXeha0Ppm9c1NzhY4Mjp5qcX7xu1u+OC0cCiWD55epliZ9Z
 9eUnOcSp691rCg68MewcQQ8+NeKan8fTqPWli9JLP6J510sWEFCXWupF328=
------END CERTIFICATE-----`)
-
-	c.CertData = []byte(`-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----`),
+		CertData: []byte(`-----BEGIN CERTIFICATE-----
 MIICzjCCAbagAwIBAgIILeSHXp4lQmMwDQYJKoZIhvcNAQELBQAwFTETMBEGA1UE
 AxMKZmVkZXJhdGlvbjAeFw0xNzA3MDYxMTI4MjRaFw0xODA3MDYxMTI4MjVaMBAx
 DjAMBgNVBAMTBWFkbWluMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
@@ -214,9 +247,8 @@ R95mEVP2QzCcTdxhg7AlwmFmSwEvHewDFEIifu8+7POeUGn+R5D4sEmffr5EoPLB
 8Dslmj1tbfJyzY9ztKizFWD8Kc6HvX/4BIsQTiZZ+dYw3dugBEBW+mi68U5FQnz7
 3RVkB7QBTUBMhB/7jsl73j2+gRO28HoRHlbHdiZhZXjBy++pz0h8QwcSUbxkNAyS
 WK0=
------END CERTIFICATE-----`)
-
-	c.KeyData = []byte(`-----BEGIN RSA PRIVATE KEY-----
+-----END CERTIFICATE-----`),
+		KeyData: []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA4STo145Pd7ZzumcyT9EWh7SLUpalz/jVZV90ZyzJhSB98CHW
 byvSpU50dXa4C11OY3eDR0Iu5JNRA51iPoQZ2hBHoee6+ccYFu+VpwniQo2xayT1
 8DcL973Udrn+rybKbcZoTfujO7ebJhuzSktS+P6JfRJcojLAHtGxwZZA2pCdM9v8
@@ -242,7 +274,10 @@ kL+yQ4B8irtLtPqsJPc4p8pjsapuONZLUOeVFsK7YC3Z1Ad/gg10olraqIpec1zJ
 Mt9ZCQKBgQCZkKaTyVpW5LnfojVZ9WJE/kfjD3zreQGUFUpkT5TnRzScKrsegpZb
 4MFusW7KjU4Zm0ICG1RZXUTEixd+la9YAw7dc8dAs+y8BWm89q4qdmdz1+E1Cu+H
 QFrUHjqx0gH44r5/Lc9ID0c79ksd2eA+Cb/+VZdlnslwVBahwjxTRw==
------END RSA PRIVATE KEY-----`)
+-----END RSA PRIVATE KEY-----`),
+	},
+}
 
-	return fedclient.NewForConfig(c)
+func getFederationClient() (*fedclient.Clientset, error) {
+	return fedclient.NewForConfig(federationConfig)
 }
