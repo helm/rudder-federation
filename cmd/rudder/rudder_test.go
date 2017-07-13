@@ -53,7 +53,7 @@ func TestGetFederatedClients(t *testing.T) {
 		t.Fatalf("error: ", err)
 	}
 
-	if len(clients) != 1 {
+	if len(clients) != 2 {
 		t.Fatalf("Client count wrong")
 	}
 

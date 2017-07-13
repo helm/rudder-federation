@@ -96,9 +96,16 @@ func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rud
 	}
 
 	//TODO use federated
-	_, local, err := SplitManifestForFed(in.Release.Manifest)
+	federated, local, err := SplitManifestForFed(in.Release.Manifest)
 
 	if err != nil {
+		grpclog.Printf("error splitting manifests: %v", err)
+		return &rudderAPI.InstallReleaseResponse{}, err
+	}
+
+	err = createInFederation(federated, in)
+	if err != nil {
+		grpclog.Printf("error creating federated objects: %v", err)
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
@@ -108,6 +115,7 @@ func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rud
 		err := c.Create(in.Release.Namespace, bytes.NewBufferString(local), 500, false)
 		if err != nil {
 			grpclog.Printf("error when creating release: %v", err)
+			return &rudderAPI.InstallReleaseResponse{}, err
 		}
 	}
 
@@ -209,71 +217,101 @@ func SplitManifestForFed(manifest string) (fed string, local string, err error) 
 	return
 }
 
+func createInFederation(manifest string, req *rudderAPI.InstallReleaseRequest) error {
+	config := clientcmdapi.Config{
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"federation": &clientcmdapi.Cluster{
+				Server: federationConfig.Host,
+				CertificateAuthorityData: federationConfig.CAData,
+			},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"federation": &clientcmdapi.Context{
+				Cluster:  "federation",
+				AuthInfo: "federation",
+			},
+		},
+		CurrentContext: "federation",
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"federation": &clientcmdapi.AuthInfo{
+				ClientCertificateData: federationConfig.CertData,
+				ClientKeyData:         federationConfig.KeyData,
+			},
+		},
+	}
+
+	clientconfig := clientcmd.NewDefaultClientConfig(config, &clientcmd.ConfigOverrides{})
+
+	client := kube.New(clientconfig)
+
+	return client.Create(req.Release.Namespace, bytes.NewBufferString(manifest), 500, false)
+}
+
 var federationConfig = &rest.Config{
 	//TODO: don't hardcode this xD
-	Host: "https://172.28.0.4:31969",
+	Host: "https://172.28.0.5:31180",
 	TLSClientConfig: rest.TLSClientConfig{
 		CAData: []byte(`-----BEGIN CERTIFICATE-----
 MIICyDCCAbCgAwIBAgIBADANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwpmZWRl
-cmF0aW9uMB4XDTE3MDcwNjExMjgyNFoXDTI3MDcwNDExMjgyNFowFTETMBEGA1UE
-AxMKZmVkZXJhdGlvbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJck
-ny1esJxPTTr2naRuoBg3g0bT1fN/hrKMN127nmuKirbN0BmyBKIHdV6cNvtoZ/tM
-mxYu346VhfJW3ecI4vY/A0Dfg5nU6AeA8qR2Yft2+Ib53lhbdbhDLcG8+mNV6lKl
-LYohlmn032s6e25gqvKMBDe91mm1nwZZFw7zFbR5ieZEj8mMgHJpqxlYhcwLZJxG
-6fvTZmVysE/rdG9bZoR4bEUILJAEouMh1Gjn5UjhxWEswmOcrIhEew7be5sTXT3G
-sQN89vNloOgv4ZRO9Vqlya7tf4fKjxbYf1OUTUOFPORmA+usox2q00u0OgaSwrT4
-cCDYWa7lLEk6IPpEnjcCAwEAAaMjMCEwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB
-/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAFWlrrSltyT+/m8V1tvqcP0QVNaP
-tpP0WC48L2NRXGncbVAPnDhP3Y0k8B67j1sEgy9R97u1flTn/2DP5Bd7hMvsMIR7
-meadejLumR5Y2qOjn8LdNwlvl3EJEPwx+GwpaQ0KhY03fasPMJJWBYWos+ok1BKE
-DKw8c9Skos+XlsEk9CSIGL/2qhJePC1Ka4ZOpBZiY1ISULA+p2IPZGMl4boP7Hma
-4FFE1fO2+YN1FZxRIzXeha0Ppm9c1NzhY4Mjp5qcX7xu1u+OC0cCiWD55epliZ9Z
-9eUnOcSp691rCg68MewcQQ8+NeKan8fTqPWli9JLP6J510sWEFCXWupF328=
+cmF0aW9uMB4XDTE3MDcxMzEzMTE0NFoXDTI3MDcxMTEzMTE0NFowFTETMBEGA1UE
+AxMKZmVkZXJhdGlvbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAPq2
+2Rv8QI3pechpdgOqTDvCb6yQBHUt92+5xCnpKar8IB31Yao539In6NYoU45QwoDa
+02IyXGzk9jYT+TSMxFel+tijiFthQ3SH9KCrjbEDf9xkh+P/MiSs9k7CAxHkGreN
+cS/7a51IW561S18rCmTM+AhJpv9cpx3Rp5cYi3ygwTewvriuMkMC4I9HaVO1RTta
+bw0HylFMHqSXMeITCpc4JWIDwX0wi2HjT4DX8z6kL4/IXlke+KrbJr2xXV3ks2Y6
+e4uh2Q4W6kewnY7p1nkHQTRU8+IODrBi2bxfAFL4wAbQWoDDq21f5OvfsD79Zn9G
+IS/swr362bsS5xD07HcCAwEAAaMjMCEwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB
+/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBADRs+J2oSXMZkddT27lAu0qn4rky
+SA5RircX5yjuCWvFuNXeM9OgrYomg8zxmh+XK9aonGG4AFmhNKfItbVF7sk9ZcI4
+91SJ7E0Qqy0DKBAXeMtVAb4O3bb7TaFomSEzuHnGAdaCxj4Ano1NY57gnI7uPobM
+eXdd8ZDeN9IIwfv1B/d8k2FD2kXZnE+gStB4UKpFL0flZyAkH7bRtmDaPILDa63q
+g2tsLaQYTu7y3NsCTQmUxoQmkURAX1jmuzgDCiOSg6fBSotUG3a/53WXz9d029Mq
+KY3fibRnXfLBOf8WlBzVmf7NLQUkJd0YI0yRK7Kw9koVKYbNXW07qt/EuRY=
 -----END CERTIFICATE-----`),
 		CertData: []byte(`-----BEGIN CERTIFICATE-----
-MIICzjCCAbagAwIBAgIILeSHXp4lQmMwDQYJKoZIhvcNAQELBQAwFTETMBEGA1UE
-AxMKZmVkZXJhdGlvbjAeFw0xNzA3MDYxMTI4MjRaFw0xODA3MDYxMTI4MjVaMBAx
+MIICzjCCAbagAwIBAgIIb9FlqWhu10AwDQYJKoZIhvcNAQELBQAwFTETMBEGA1UE
+AxMKZmVkZXJhdGlvbjAeFw0xNzA3MTMxMzExNDRaFw0xODA3MTMxMzExNDVaMBAx
 DjAMBgNVBAMTBWFkbWluMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
-4STo145Pd7ZzumcyT9EWh7SLUpalz/jVZV90ZyzJhSB98CHWbyvSpU50dXa4C11O
-Y3eDR0Iu5JNRA51iPoQZ2hBHoee6+ccYFu+VpwniQo2xayT18DcL973Udrn+rybK
-bcZoTfujO7ebJhuzSktS+P6JfRJcojLAHtGxwZZA2pCdM9v8IBBedlF/8ToduyJt
-m05QUKZ4hnRzioVZ3iV4pS8znGOtClhCNd8eJ7ULZER1PWfY+E27ROftoGmKAz3s
-ID7/z4rxvjrwZGKdevDBMe5HWtQdVT33tLIDhFNF7uYPnO6sac7g9kAqdwytp0nr
-Sa4H4GPeKRC6wRtR27Gs4QIDAQABoycwJTAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0l
-BAwwCgYIKwYBBQUHAwIwDQYJKoZIhvcNAQELBQADggEBAJSgfK45/pLzZG41P6N0
-8MRxEl+MnF2zNiEX+vgplvyb5bAEspa8NFUaEd5D97od1DfliPT1jWy77TkTs3lf
-QAnHOHKm15Z8iN4+eN7jpIRH80IEi+kkkR/gBseN/sir/fgO24BlMYJyqsCQdXLu
-R95mEVP2QzCcTdxhg7AlwmFmSwEvHewDFEIifu8+7POeUGn+R5D4sEmffr5EoPLB
-8Dslmj1tbfJyzY9ztKizFWD8Kc6HvX/4BIsQTiZZ+dYw3dugBEBW+mi68U5FQnz7
-3RVkB7QBTUBMhB/7jsl73j2+gRO28HoRHlbHdiZhZXjBy++pz0h8QwcSUbxkNAyS
-WK0=
+tt/y3g4iT3+hp4t4cwn0bBUTMun2IyjpVi3gq8LVpvygWKvHkpDzYAERDmoIFtSF
+m4jI5vbdg9ekqLbSiw3dAnPZ3aA5Fvs/e1BqbsiyKbYB2chpoTCqat0UMAnD/w1S
+pyNeLmo2Wx3837QB7ojvPyucExKtHPzJopEvE7XZiAbEXcsUngZXEfoL2JZlDB1z
+RiGZhH4mDFNT6plVJuyG9BUp5BXroTjAxaAwUib6G3/I11jrGYaSheYOGNwBuEEh
+68biKlaJyjuM78oeZJO5KShCQoyM3Hy0vWi14pVf7MKAQD6hdoHVG4rMphzJUYTU
+LZjo6udY6jDKzE3Fs8uDswIDAQABoycwJTAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0l
+BAwwCgYIKwYBBQUHAwIwDQYJKoZIhvcNAQELBQADggEBAK/59nXMFNj3QVvKnzum
+6zymCWQxHrRKxSxzZNuPFBElHflnhquorgUk0rzs0QJ1e0CS1KIEDltkcr5C8Pey
+YXls5jRNX4QxY4wNmfofjg6TIkVAzGEWqw0sN+Vw/Kbb1najObFD9nCiNiXd8EJ2
+Pqaje0nJyU6k6vEluABnU7fzhjWId+X8jJaTU45+oRSiGrB3ceocWSnjnMJ9jM4M
+EfCPjfnFsEiZvqL+JWbJSQa1l4Z5zJcKQG3C+UHhQixyM9gwxNfshVqt2lEJqO/9
+w9L2TCQS3xhDDL2t8UgMI/50wLrE0ZzBiDCa2uFjtyHU7gcniuWKOCz+hgTAkSqs
+1Pk=
 -----END CERTIFICATE-----`),
 		KeyData: []byte(`-----BEGIN RSA PRIVATE KEY-----
-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
+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
 -----END RSA PRIVATE KEY-----`),
 	},
 }
