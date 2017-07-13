@@ -1,10 +1,10 @@
 DOCKER_REGISTRY   ?= gcr.io
-IMAGE_PREFIX      ?= kubernetes-helm-rudder-appcontroller
+IMAGE_PREFIX      ?= kubernetes-helm-rudder-federation
 SHORT_NAME        ?= rudder
 DIST_DIRS         = find * -type d -exec
 APP               = rudder
-PACKAGE           = github.com/helm/rudder-appcontroller
-IMAGE_REPO        = helm/rudder-appcontroller
+PACKAGE           = github.com/kubernetes-helm/rudder-federation
+IMAGE_REPO        = helm/rudder-federation
 
 # go option
 GO        ?= go
