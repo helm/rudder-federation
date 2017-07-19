@@ -67,24 +67,47 @@ func makeClient(cluster federation.Cluster) *kube.Client {
 	return kube.New(clientconfig)
 }
 
+//Map all object kinds supported by Federation API. Source: https://kubernetes.io/docs/reference/federation/
+var federationKinds = map[string]bool{
+	"Cluster":            true,
+	"ClusterList":        true,
+	"ConfigMap":          true,
+	"ConfigMapList":      true,
+	"DaemonSet":          true,
+	"DaemonSetList":      true,
+	"Deployment":         true,
+	"DeploymentList":     true,
+	"DeploymentRollback": true,
+	"Event":              true,
+	"EventList":          true,
+	"Ingress":            true,
+	"IngressList":        true,
+	"Namespace":          true,
+	"NamespaceList":      true,
+	"ReplicaSet":         true,
+	"ReplicaSetList":     true,
+	"Scale":              true,
+	"Secret":             true,
+	"SecretList":         true,
+	"Service":            true,
+	"ServiceList":        true,
+}
+
 func SplitManifestForFed(manifest string) (fed string, local string, err error) {
-	localKinds := map[string]bool{
-		"PersistentVolumeClaim": true,
-	}
 
 	objects, err := releaseutil.SplitManifestsWithHeads(manifest)
 	if err != nil {
 		return
 	}
 
-	local = "---"
 	fed = "---"
+	local = "---"
 
 	for _, o := range objects {
-		if localKinds[o.Kind] {
-			local += "\n" + strings.Trim(o.Content, "- \t\n") + "\n---"
-		} else {
+		if federationKinds[o.Kind] {
 			fed += "\n" + strings.Trim(o.Content, "- \t\n") + "\n---"
+		} else {
+			local += "\n" + strings.Trim(o.Content, "- \t\n") + "\n---"
 		}
 	}
 
