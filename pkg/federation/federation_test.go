@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package federation
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ import (
 )
 
 func TestGetFederationClient(t *testing.T) {
-	c, err := getFederationClient()
+	c, err := GetFederationClient()
 
 	if err != nil {
 		t.Fatalf("error: ", err)
@@ -41,13 +41,13 @@ func TestGetFederationClient(t *testing.T) {
 }
 
 func TestGetFederatedClients(t *testing.T) {
-	c, err := getFederationClient()
+	c, err := GetFederationClient()
 
 	if err != nil {
 		t.Fatalf("error: ", err)
 	}
 
-	clients, err := getFederatedClusterClients(c)
+	clients, err := GetFederatedClusterClients(c)
 
 	if err != nil {
 		t.Fatalf("error: ", err)
