@@ -64,6 +64,8 @@ spec:
         command: ["/tiller"]
         args: ["--experimental-release"]
       - env:
+        - name: FEDERATION_HOST
+          value: federation-apiserver.federation-system
         image: nebril/rudder-fed
         imagePullPolicy: IfNotPresent
         name: rudder
