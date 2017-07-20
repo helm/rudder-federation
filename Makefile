@@ -4,7 +4,7 @@ SHORT_NAME        ?= rudder
 DIST_DIRS         = find * -type d -exec
 APP               = rudder
 PACKAGE           = github.com/kubernetes-helm/rudder-federation
-IMAGE_REPO        = nebril/rudder-federation
+IMAGE_REPO        = nebril/rudder-fed
 
 # go option
 GO        ?= go
