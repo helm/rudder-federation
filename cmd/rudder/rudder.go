@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"strings"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -71,27 +72,21 @@ func (r *ReleaseModuleServiceServer) Version(ctx context.Context, in *rudderAPI.
 	}, nil
 }
 
-// InstallRelease creates a release using kubeClient.Create
+// InstallRelease creates a release in federation and federated clusters
 func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rudderAPI.InstallReleaseRequest) (*rudderAPI.InstallReleaseResponse, error) {
 	grpclog.Print("install")
-
-	federationClient, err := fedlocal.GetFederationClient()
-
-	if err != nil {
-		grpclog.Printf("error getting federation client: %v", err)
-		return &rudderAPI.InstallReleaseResponse{}, err
-	}
-
-	clients, err := fedlocal.GetFederatedClusterClients(federationClient)
-	if err != nil {
-		grpclog.Printf("error getting federated cluster clients: %v", err)
-		return &rudderAPI.InstallReleaseResponse{}, err
-	}
 
 	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
 
 	if err != nil {
 		grpclog.Printf("error splitting manifests: %v", err)
+		return &rudderAPI.InstallReleaseResponse{}, err
+	}
+
+	_, _, clients, err := fedlocal.GetAllClients()
+
+	if err != nil {
+		grpclog.Printf("error getting clients: %v", err)
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
@@ -143,8 +138,58 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudderAPI.ReleaseStatusRequest) (*rudderAPI.ReleaseStatusResponse, error) {
 	grpclog.Print("status")
 
-	resp, err := kubeClient.Get(in.Release.Namespace, bytes.NewBufferString(in.Release.Manifest))
-	in.Release.Info.Status.Resources = resp
+	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
+
+	if err != nil {
+		grpclog.Printf("error splitting manifests: %v", err)
+		return &rudderAPI.ReleaseStatusResponse{}, err
+	}
+
+	_, fedClient, clients, err := fedlocal.GetAllClients()
+	if err != nil {
+		grpclog.Printf("Error getting clients: %v", err)
+		return &rudderAPI.ReleaseStatusResponse{}, err
+	}
+
+	responses := make([]string, 0, len(clients)+1)
+	resps := make(chan string)
+
+	fedResponse, err := fedClient.Get(in.Release.Namespace, bytes.NewBufferString(federated))
+	if err != nil {
+		grpclog.Printf("Error getting response from federation: %v", err)
+		return &rudderAPI.ReleaseStatusResponse{}, err
+	}
+	fedResponse = "Federation resources:\n" + fedResponse
+	go func() { resps <- fedResponse }()
+
+	errchan := make(chan error)
+	for _, client := range clients {
+		go func(client *kube.Client) {
+			resp, err := client.Get(in.Release.Namespace, bytes.NewBufferString(local))
+			config, _ := client.ClientConfig()
+			resp = config.Host + " resources:\n" + resp
+			resps <- resp
+			if err != nil {
+				errchan <- err
+			}
+		}(client)
+	}
+
+	for i := 0; i < len(clients)+1; i++ {
+		responses = append(responses, <-resps)
+	}
+
+	select {
+	case err = <-errchan:
+		grpclog.Printf("Error getting response from federated cluster: %v", err)
+		return &rudderAPI.ReleaseStatusResponse{}, err
+	default:
+	}
+
+	separator := "#########\n"
+	finalResponse := strings.Join(responses, separator)
+
+	in.Release.Info.Status.Resources = finalResponse
 	return &rudderAPI.ReleaseStatusResponse{
 		Release: in.Release,
 		Info:    in.Release.Info,

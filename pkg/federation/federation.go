@@ -70,6 +70,36 @@ func makeClient(cluster federation.Cluster) *kube.Client {
 	return kube.New(clientconfig)
 }
 
+func makeFedClient() *kube.Client {
+	config := clientcmdapi.Config{
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"federation": &clientcmdapi.Cluster{
+				Server: federationConfig.Host,
+				CertificateAuthorityData: federationConfig.CAData,
+			},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"federation": &clientcmdapi.Context{
+				Cluster:  "federation",
+				AuthInfo: "federation",
+			},
+		},
+		CurrentContext: "federation",
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"federation": &clientcmdapi.AuthInfo{
+				ClientCertificateData: federationConfig.CertData,
+				ClientKeyData:         federationConfig.KeyData,
+				Username:              federationConfig.Username,
+				Password:              federationConfig.Password,
+			},
+		},
+	}
+
+	clientconfig := clientcmd.NewDefaultClientConfig(config, &clientcmd.ConfigOverrides{})
+
+	return kube.New(clientconfig)
+}
+
 //Map all object kinds supported by Federation API. Source: https://kubernetes.io/docs/reference/federation/
 var federationKinds = map[string]bool{
 	"Cluster":            true,
@@ -118,31 +148,8 @@ func SplitManifestForFed(manifest string) (fed string, local string, err error) 
 }
 
 func CreateInFederation(manifest string, req *rudderAPI.InstallReleaseRequest) error {
-	config := clientcmdapi.Config{
-		Clusters: map[string]*clientcmdapi.Cluster{
-			"federation": &clientcmdapi.Cluster{
-				Server: federationConfig.Host,
-				CertificateAuthorityData: federationConfig.CAData,
-			},
-		},
-		Contexts: map[string]*clientcmdapi.Context{
-			"federation": &clientcmdapi.Context{
-				Cluster:  "federation",
-				AuthInfo: "federation",
-			},
-		},
-		CurrentContext: "federation",
-		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			"federation": &clientcmdapi.AuthInfo{
-				ClientCertificateData: federationConfig.CertData,
-				ClientKeyData:         federationConfig.KeyData,
-			},
-		},
-	}
 
-	clientconfig := clientcmd.NewDefaultClientConfig(config, &clientcmd.ConfigOverrides{})
-
-	client := kube.New(clientconfig)
+	client := makeFedClient()
 
 	return client.Create(req.Release.Namespace, bytes.NewBufferString(manifest), 500, false)
 }
@@ -153,30 +160,46 @@ var federationConfig = &rest.Config{
 
 // GetFederationClient uses federationConfig, but it can be overwritten by federation-auth secret within the same namespace
 func GetFederationClient() (*fedclient.Clientset, error) {
+	return fedclient.NewForConfig(federationConfig)
+}
+
+// GetAllClients returns federation clientset, helm federation client and helm clients for all federated clusters
+func GetAllClients() (*fedclient.Clientset, *kube.Client, []*kube.Client, error) {
+	fedClientset, err := GetFederationClient()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	fedClient := makeFedClient()
+
+	clients, err := GetFederatedClusterClients(fedClientset)
+
+	return fedClientset, fedClient, clients, err
+}
+
+func populateFederationConfig() error {
 	kubeconfig, err := clientrest.InClusterConfig()
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	cm, err := clientset.Core().ConfigMaps("kube-system").Get("federation-credentials")
 
 	if err != nil {
-		grpclog.Println("error getting federation-credentails config map, using default config")
-		return fedclient.NewForConfig(federationConfig)
+		return err
 	}
 
 	if cm.Data["type"] == "basic" {
 		federationConfig.Username = cm.Data["username"]
 		federationConfig.Password = cm.Data["password"]
 		federationConfig.Host = cm.Data["host"]
-		federationConfig.Insecure = true
 	} else if cm.Data["type"] == "tls" {
 		federationConfig.CAData = []byte(cm.Data["cadata"])
 		federationConfig.CertData = []byte(cm.Data["certdata"])
@@ -185,5 +208,9 @@ func GetFederationClient() (*fedclient.Clientset, error) {
 		federationConfig.Host = cm.Data["host"]
 	}
 
-	return fedclient.NewForConfig(federationConfig)
+	return err
+}
+
+func init() {
+	populateFederationConfig()
 }
