@@ -128,10 +128,60 @@ func (r *ReleaseModuleServiceServer) RollbackRelease(ctx context.Context, in *ru
 // UpgradeRelease upgrades manifests using kubernetes client
 func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rudderAPI.UpgradeReleaseRequest) (*rudderAPI.UpgradeReleaseResponse, error) {
 	grpclog.Print("upgrade")
-	c := bytes.NewBufferString(in.Current.Manifest)
-	t := bytes.NewBufferString(in.Target.Manifest)
-	err := kubeClient.Update(in.Target.Namespace, c, t, in.Recreate, in.Timeout, in.Wait)
-	// upgrade response object should be changed to include status
+	federatedCurrent, localCurrent, err := fedlocal.SplitManifestForFed(in.Current.Manifest)
+
+	if err != nil {
+		grpclog.Printf("error splitting current manifests: %v", err)
+		return &rudderAPI.UpgradeReleaseResponse{}, err
+	}
+
+	federatedTarget, localTarget, err := fedlocal.SplitManifestForFed(in.Target.Manifest)
+
+	if err != nil {
+		grpclog.Printf("error splitting target manifests: %v", err)
+		return &rudderAPI.UpgradeReleaseResponse{}, err
+	}
+
+	_, fedClient, clients, err := fedlocal.GetAllClients()
+
+	if err != nil {
+		grpclog.Printf("Error getting clients: %v", err)
+		return &rudderAPI.UpgradeReleaseResponse{}, err
+	}
+
+	errChan := make(chan error)
+	doneChan := make(chan bool)
+
+	upgrader := func(client *kube.Client, current, target *bytes.Buffer) {
+		defer func() { doneChan <- true }()
+		config, _ := client.ClientConfig()
+		grpclog.Printf("Upgrading in %v", config.Host)
+		err := kubeClient.Update(in.Target.Namespace, current, target, in.Recreate, in.Timeout, in.Wait)
+		if err != nil {
+			errChan <- err
+		}
+	}
+
+	go upgrader(fedClient, bytes.NewBufferString(federatedCurrent), bytes.NewBufferString(federatedTarget))
+
+	c := bytes.NewBufferString(localCurrent)
+	t := bytes.NewBufferString(localTarget)
+
+	for _, client := range clients {
+		go upgrader(client, c, t)
+	}
+
+	//Waiting for all upgraders to finish (successful or not)
+	for i := 0; i < len(clients)+1; i++ {
+		<-doneChan
+	}
+
+	select {
+	case err = <-errChan:
+		return &rudderAPI.UpgradeReleaseResponse{}, err
+	default:
+	}
+
 	return &rudderAPI.UpgradeReleaseResponse{}, err
 }
 
@@ -165,10 +215,11 @@ func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudd
 	errchan := make(chan error)
 	for _, client := range clients {
 		go func(client *kube.Client) {
+			var resp string
+			defer func() { resps <- resp }()
 			resp, err := client.Get(in.Release.Namespace, bytes.NewBufferString(local))
 			config, _ := client.ClientConfig()
 			resp = config.Host + " resources:\n" + resp
-			resps <- resp
 			if err != nil {
 				errchan <- err
 			}
