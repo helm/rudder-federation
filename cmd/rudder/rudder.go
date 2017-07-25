@@ -27,11 +27,12 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 
-	//todo: change to k8s.com/helm after rudder is merged
-	"github.com/nebril/helm/pkg/kube"
-	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
-	"github.com/nebril/helm/pkg/rudder"
-	"github.com/nebril/helm/pkg/version"
+	"k8s.io/helm/pkg/kube"
+	releaseAPI "k8s.io/helm/pkg/proto/hapi/release"
+	rudderAPI "k8s.io/helm/pkg/proto/hapi/rudder"
+	"k8s.io/helm/pkg/rudder"
+	//"k8s.io/helm/pkg/tiller"
+	"k8s.io/helm/pkg/version"
 
 	fedlocal "github.com/kubernetes-helm/rudder-federation/pkg/federation"
 )
@@ -121,7 +122,7 @@ func (r *ReleaseModuleServiceServer) RollbackRelease(ctx context.Context, in *ru
 	grpclog.Print("rollback")
 	c := bytes.NewBufferString(in.Current.Manifest)
 	t := bytes.NewBufferString(in.Target.Manifest)
-	err := kubeClient.Update(in.Target.Namespace, c, t, in.Recreate, in.Timeout, in.Wait)
+	err := kubeClient.Update(in.Target.Namespace, c, t, in.Force, in.Recreate, in.Timeout, in.Wait)
 	return &rudderAPI.RollbackReleaseResponse{}, err
 }
 
@@ -153,10 +154,10 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 	doneChan := make(chan bool)
 
 	upgrader := func(client *kube.Client, current, target *bytes.Buffer) {
-		defer func() { doneChan <- true }()
 		config, _ := client.ClientConfig()
 		grpclog.Printf("Upgrading in %v", config.Host)
-		err := kubeClient.Update(in.Target.Namespace, current, target, in.Recreate, in.Timeout, in.Wait)
+		err := kubeClient.Update(in.Target.Namespace, current, target, in.Force, in.Recreate, in.Timeout, in.Wait)
+		doneChan <- true
 		if err != nil {
 			errChan <- err
 		}
@@ -216,10 +217,10 @@ func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudd
 	for _, client := range clients {
 		go func(client *kube.Client) {
 			var resp string
-			defer func() { resps <- resp }()
 			resp, err := client.Get(in.Release.Namespace, bytes.NewBufferString(local))
 			config, _ := client.ClientConfig()
 			resp = config.Host + " resources:\n" + resp
+			resps <- resp
 			if err != nil {
 				errchan <- err
 			}

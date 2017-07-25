@@ -20,24 +20,23 @@ import (
 	"bytes"
 	"strings"
 
-	"k8s.io/kubernetes/federation/apis/federation"
-	fedclient "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
-	"k8s.io/kubernetes/pkg/api"
-	rest "k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	clientrest "k8s.io/client-go/rest"
+	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/kubernetes/federation/apis/federation"
+	fedclient "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
 
-	"github.com/nebril/helm/pkg/kube"
-	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
+	"k8s.io/helm/pkg/kube"
+	rudderAPI "k8s.io/helm/pkg/proto/hapi/rudder"
 
 	"github.com/kubernetes-helm/rudder-federation/pkg/releaseutil"
 )
 
 func GetFederatedClusterClients(fed *fedclient.Clientset) (clients []*kube.Client, err error) {
-	clusters, err := fed.Federation().Clusters().List(api.ListOptions{})
+	clusters, err := fed.Federation().Clusters().List(v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +189,7 @@ func populateFederationConfig() error {
 		return err
 	}
 
-	cm, err := clientset.Core().ConfigMaps("kube-system").Get("federation-credentials")
+	cm, err := clientset.Core().ConfigMaps("kube-system").Get("federation-credentials", v1.GetOptions{})
 
 	if err != nil {
 		return err
