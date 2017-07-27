@@ -22,3 +22,5 @@ import:
 - package: github.com/ghodss/yaml
 - package: k8s.io/client-go
   version: release-3.0
+- package: golang.org/x/text
+  version: 19d0677862a6087f8898b4ae8f92aa30213be8ab

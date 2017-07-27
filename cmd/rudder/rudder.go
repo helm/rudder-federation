@@ -31,7 +31,7 @@ import (
 	releaseAPI "k8s.io/helm/pkg/proto/hapi/release"
 	rudderAPI "k8s.io/helm/pkg/proto/hapi/rudder"
 	"k8s.io/helm/pkg/rudder"
-	//"k8s.io/helm/pkg/tiller"
+	"k8s.io/helm/pkg/tiller"
 	"k8s.io/helm/pkg/version"
 
 	fedlocal "github.com/kubernetes-helm/rudder-federation/pkg/federation"
@@ -110,11 +110,90 @@ func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rud
 	return &rudderAPI.InstallReleaseResponse{}, err
 }
 
-// DeleteRelease is not implemented
+// DeleteRelease deletes a release in federation and federated clusters
 func (r *ReleaseModuleServiceServer) DeleteRelease(ctx context.Context, in *rudderAPI.DeleteReleaseRequest) (*rudderAPI.DeleteReleaseResponse, error) {
-	grpclog.Print("delete")
+	grpclog.Info("delete")
+	resp := &rudderAPI.DeleteReleaseResponse{
+		Release: &releaseAPI.Release{},
+	}
 
-	return &rudderAPI.DeleteReleaseResponse{}, nil
+	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
+
+	if err != nil {
+		grpclog.Infof("error splitting manifests to delete: %v", err)
+		return resp, err
+	}
+
+	_, fedClient, clients, err := fedlocal.GetAllClients()
+
+	if err != nil {
+		grpclog.Infof("Error getting clients: %v", err)
+		return resp, err
+	}
+
+	errChan := make(chan error)
+	doneChan := make(chan bool)
+
+	deleter := func(client *kube.Client, manifest string) {
+		errs := make([]error, 0)
+		host := ""
+
+		defer func() {
+			grpclog.Infof("deletion in %v complete", host)
+			doneChan <- true
+			for _, err := range errs {
+				go func(e error) {
+					grpclog.Infof("error during deletion in %v: %s", host, err)
+					errChan <- e
+				}(err)
+			}
+		}()
+
+		config, err := client.ClientConfig()
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		host = config.Host
+		grpclog.Infof("Deleting in %v", host)
+
+		clientset, err := client.ClientSet()
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+
+		versionset, err := tiller.GetVersionSet(clientset.Discovery())
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+
+		release := *in.Release
+		release.Manifest = manifest
+		_, errs = tiller.DeleteRelease(&release, versionset, client)
+	}
+
+	go deleter(fedClient, federated)
+
+	for _, client := range clients {
+		go deleter(client, local)
+	}
+
+	//Waiting for all upgraders to finish (successful or not)
+	grpclog.Infof("Waiting for deletions to finish")
+	for i := 0; i < len(clients)+1; i++ {
+		<-doneChan
+	}
+
+	select {
+	case err = <-errChan:
+		grpclog.Infof("Error while deleting: %v", err)
+		return resp, err
+	default:
+	}
+	grpclog.Infof("Finished deletion")
+	return resp, err
 }
 
 // RollbackRelease rolls back the release

@@ -31,8 +31,9 @@ spec:
       - env:
         - name: TILLER_NAMESPACE
           value: kube-system
-        image: gcr.io/kubernetes-helm/tiller:v2.5.0
-        imagePullPolicy: IfNotPresent
+        #image: gcr.io/kubernetes-helm/tiller:v2.5.0
+        image: nebril/tiller
+        imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
           httpGet:
@@ -69,7 +70,7 @@ spec:
         - name: GRPC_GO_LOG_SEVERITY_LEVEL
           value: info
         image: nebril/rudder-fed
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: rudder
         ports:
         - containerPort: 10001
