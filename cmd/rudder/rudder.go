@@ -57,7 +57,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	rudderAPI.RegisterReleaseModuleServiceServer(grpcServer, &ReleaseModuleServiceServer{})
 
-	grpclog.Print("Federation Rudder started")
+	grpclog.Info("Federation Rudder started")
 	grpcServer.Serve(lis)
 }
 
@@ -66,7 +66,7 @@ type ReleaseModuleServiceServer struct{}
 
 // Version is not yet implemented
 func (r *ReleaseModuleServiceServer) Version(ctx context.Context, in *rudderAPI.VersionReleaseRequest) (*rudderAPI.VersionReleaseResponse, error) {
-	grpclog.Print("version")
+	grpclog.Info("version")
 	return &rudderAPI.VersionReleaseResponse{
 		Name:    "helm-rudder-native",
 		Version: version.Version,
@@ -75,34 +75,34 @@ func (r *ReleaseModuleServiceServer) Version(ctx context.Context, in *rudderAPI.
 
 // InstallRelease creates a release in federation and federated clusters
 func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rudderAPI.InstallReleaseRequest) (*rudderAPI.InstallReleaseResponse, error) {
-	grpclog.Print("install")
+	grpclog.Info("install")
 
 	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
 
 	if err != nil {
-		grpclog.Printf("error splitting manifests: %v", err)
+		grpclog.Infof("error splitting manifests: %v", err)
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
 	_, _, clients, err := fedlocal.GetAllClients()
 
 	if err != nil {
-		grpclog.Printf("error getting clients: %v", err)
+		grpclog.Infof("error getting clients: %v", err)
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
 	err = fedlocal.CreateInFederation(federated, in)
 	if err != nil {
-		grpclog.Printf("error creating federated objects: %v", err)
+		grpclog.Infof("error creating federated objects: %v", err)
 		return &rudderAPI.InstallReleaseResponse{}, err
 	}
 
 	for _, c := range clients {
 		config, _ := c.ClientConfig()
-		grpclog.Printf("installing in %s", config.Host)
+		grpclog.Infof("installing in %s", config.Host)
 		err := c.Create(in.Release.Namespace, bytes.NewBufferString(local), 500, false)
 		if err != nil {
-			grpclog.Printf("error when creating release: %v", err)
+			grpclog.Infof("error when creating release: %v", err)
 			return &rudderAPI.InstallReleaseResponse{}, err
 		}
 	}
@@ -119,7 +119,7 @@ func (r *ReleaseModuleServiceServer) DeleteRelease(ctx context.Context, in *rudd
 
 // RollbackRelease rolls back the release
 func (r *ReleaseModuleServiceServer) RollbackRelease(ctx context.Context, in *rudderAPI.RollbackReleaseRequest) (*rudderAPI.RollbackReleaseResponse, error) {
-	grpclog.Print("rollback")
+	grpclog.Info("rollback")
 	c := bytes.NewBufferString(in.Current.Manifest)
 	t := bytes.NewBufferString(in.Target.Manifest)
 	err := kubeClient.Update(in.Target.Namespace, c, t, in.Force, in.Recreate, in.Timeout, in.Wait)
@@ -128,25 +128,25 @@ func (r *ReleaseModuleServiceServer) RollbackRelease(ctx context.Context, in *ru
 
 // UpgradeRelease upgrades manifests using kubernetes client
 func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rudderAPI.UpgradeReleaseRequest) (*rudderAPI.UpgradeReleaseResponse, error) {
-	grpclog.Print("upgrade")
+	grpclog.Info("upgrade")
 	federatedCurrent, localCurrent, err := fedlocal.SplitManifestForFed(in.Current.Manifest)
 
 	if err != nil {
-		grpclog.Printf("error splitting current manifests: %v", err)
+		grpclog.Infof("error splitting current manifests: %v", err)
 		return &rudderAPI.UpgradeReleaseResponse{}, err
 	}
 
 	federatedTarget, localTarget, err := fedlocal.SplitManifestForFed(in.Target.Manifest)
 
 	if err != nil {
-		grpclog.Printf("error splitting target manifests: %v", err)
+		grpclog.Infof("error splitting target manifests: %v", err)
 		return &rudderAPI.UpgradeReleaseResponse{}, err
 	}
 
 	_, fedClient, clients, err := fedlocal.GetAllClients()
 
 	if err != nil {
-		grpclog.Printf("Error getting clients: %v", err)
+		grpclog.Infof("Error getting clients: %v", err)
 		return &rudderAPI.UpgradeReleaseResponse{}, err
 	}
 
@@ -155,7 +155,7 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 
 	upgrader := func(client *kube.Client, current, target *bytes.Buffer) {
 		config, _ := client.ClientConfig()
-		grpclog.Printf("Upgrading in %v", config.Host)
+		grpclog.Infof("Upgrading in %v", config.Host)
 		err := kubeClient.Update(in.Target.Namespace, current, target, in.Force, in.Recreate, in.Timeout, in.Wait)
 		doneChan <- true
 		if err != nil {
@@ -187,18 +187,18 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 }
 
 func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudderAPI.ReleaseStatusRequest) (*rudderAPI.ReleaseStatusResponse, error) {
-	grpclog.Print("status")
+	grpclog.Info("status")
 
 	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
 
 	if err != nil {
-		grpclog.Printf("error splitting manifests: %v", err)
+		grpclog.Infof("error splitting manifests: %v", err)
 		return &rudderAPI.ReleaseStatusResponse{}, err
 	}
 
 	_, fedClient, clients, err := fedlocal.GetAllClients()
 	if err != nil {
-		grpclog.Printf("Error getting clients: %v", err)
+		grpclog.Infof("Error getting clients: %v", err)
 		return &rudderAPI.ReleaseStatusResponse{}, err
 	}
 
@@ -207,7 +207,7 @@ func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudd
 
 	fedResponse, err := fedClient.Get(in.Release.Namespace, bytes.NewBufferString(federated))
 	if err != nil {
-		grpclog.Printf("Error getting response from federation: %v", err)
+		grpclog.Infof("Error getting response from federation: %v", err)
 		return &rudderAPI.ReleaseStatusResponse{}, err
 	}
 	fedResponse = "Federation resources:\n" + fedResponse
@@ -233,7 +233,7 @@ func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudd
 
 	select {
 	case err = <-errchan:
-		grpclog.Printf("Error getting response from federated cluster: %v", err)
+		grpclog.Infof("Error getting response from federated cluster: %v", err)
 		return &rudderAPI.ReleaseStatusResponse{}, err
 	default:
 	}
