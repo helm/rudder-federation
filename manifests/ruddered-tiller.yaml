@@ -66,6 +66,8 @@ spec:
       - env:
         - name: FEDERATION_HOST
           value: federation-apiserver.federation-system
+        - name: GRPC_GO_LOG_SEVERITY_LEVEL
+          value: info
         image: nebril/rudder-fed
         imagePullPolicy: IfNotPresent
         name: rudder
