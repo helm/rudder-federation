@@ -12,7 +12,7 @@ import:
   - pkg/tiller
   - pkg/version
 - package: golang.org/x/net
-  version: release-branch.go1.8
+  version: release-branch.go1.9
   subpackages:
   - context
 - package: google.golang.org/grpc
