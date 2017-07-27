@@ -1,10 +1,7 @@
-package: github.com/helm/rudder-appcontroller
+package: github.com/kubernetes-helm/rudder-federation
 import:
-- package: github.com/Mirantis/k8s-appcontroller
-  subpackages:
-  - cmd/format
-- package: github.com/nebril/helm
-  version: c5bcca33fd13fb965771ac70238e54a68214813b
+- package: k8s.io/helm
+  version: release-2.5
   subpackages:
   - pkg/kube
   - pkg/proto/hapi/chart
@@ -14,20 +11,14 @@ import:
   - pkg/rudder
   - pkg/tiller
   - pkg/version
-- package: github.com/technosophos/moniker
 - package: golang.org/x/net
+  version: release-branch.go1.8
   subpackages:
   - context
 - package: google.golang.org/grpc
+  version: v1.5.0
   subpackages:
   - grpclog
-- package: k8s.io/kubernetes
-  subpackages:
-  - pkg/client/clientset_generated/internalclientset
 - package: github.com/ghodss/yaml
-- package: github.com/onsi/ginkgo
-  version: v1.3.1
-- package: github.com/onsi/gomega
-  version: v1.1.0
 - package: k8s.io/client-go
-  version: v2.0.0
+  version: release-3.0
