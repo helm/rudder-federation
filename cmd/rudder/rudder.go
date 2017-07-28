@@ -199,56 +199,66 @@ func (r *ReleaseModuleServiceServer) DeleteRelease(ctx context.Context, in *rudd
 // RollbackRelease rolls back the release
 func (r *ReleaseModuleServiceServer) RollbackRelease(ctx context.Context, in *rudderAPI.RollbackReleaseRequest) (*rudderAPI.RollbackReleaseResponse, error) {
 	grpclog.Info("rollback")
-	c := bytes.NewBufferString(in.Current.Manifest)
-	t := bytes.NewBufferString(in.Target.Manifest)
-	err := kubeClient.Update(in.Target.Namespace, c, t, in.Force, in.Recreate, in.Timeout, in.Wait)
+
+	err := updateRelease(in.Current.Manifest, in.Target.Manifest, in.Target.Namespace, in.Force, in.Recreate, in.Wait, in.Timeout)
+	if err != nil {
+		grpclog.Warningf("Error rolling back release: %v", err)
+	}
 	return &rudderAPI.RollbackReleaseResponse{}, err
 }
 
 // UpgradeRelease upgrades manifests using kubernetes client
 func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rudderAPI.UpgradeReleaseRequest) (*rudderAPI.UpgradeReleaseResponse, error) {
 	grpclog.Info("upgrade")
-	federatedCurrent, localCurrent, err := fedlocal.SplitManifestForFed(in.Current.Manifest)
+
+	err := updateRelease(in.Current.Manifest, in.Target.Manifest, in.Target.Namespace, in.Force, in.Recreate, in.Wait, in.Timeout)
+	if err != nil {
+		grpclog.Warningf("Error updating release: %v", err)
+	}
+	return &rudderAPI.UpgradeReleaseResponse{}, err
+}
+
+func updateRelease(current, target, namespace string, force, recreate, wait bool, timeout int64) error {
+	federatedCurrent, localCurrent, err := fedlocal.SplitManifestForFed(current)
 
 	if err != nil {
-		grpclog.Infof("error splitting current manifests: %v", err)
-		return &rudderAPI.UpgradeReleaseResponse{}, err
+		grpclog.Warningf("Error splitting manifest: %v", err)
+		return err
 	}
 
-	federatedTarget, localTarget, err := fedlocal.SplitManifestForFed(in.Target.Manifest)
+	federatedTarget, localTarget, err := fedlocal.SplitManifestForFed(target)
 
 	if err != nil {
-		grpclog.Infof("error splitting target manifests: %v", err)
-		return &rudderAPI.UpgradeReleaseResponse{}, err
+		grpclog.Warningf("Error splitting manifest: %v", err)
+		return err
 	}
 
 	_, fedClient, clients, err := fedlocal.GetAllClients()
 
 	if err != nil {
-		grpclog.Infof("Error getting clients: %v", err)
-		return &rudderAPI.UpgradeReleaseResponse{}, err
+		grpclog.Warningf("Error getting clients: %v", err)
+		return err
 	}
 
-	errChan := make(chan error)
+	//We don't want errors to block goroutine
+	errChan := make(chan error, len(clients))
 	doneChan := make(chan bool)
 
-	upgrader := func(client *kube.Client, current, target *bytes.Buffer) {
+	upgrader := func(client *kube.Client, current, target string) {
 		config, _ := client.ClientConfig()
-		grpclog.Infof("Upgrading in %v", config.Host)
-		err := kubeClient.Update(in.Target.Namespace, current, target, in.Force, in.Recreate, in.Timeout, in.Wait)
+		grpclog.Infof("Updating in %v", config.Host)
+		err := client.Update(namespace, bytes.NewBufferString(current), bytes.NewBufferString(target), force, recreate, timeout, wait)
 		doneChan <- true
 		if err != nil {
+			grpclog.Warningf("Error updating in %s: %v", config.Host, err)
 			errChan <- err
 		}
 	}
 
-	go upgrader(fedClient, bytes.NewBufferString(federatedCurrent), bytes.NewBufferString(federatedTarget))
-
-	c := bytes.NewBufferString(localCurrent)
-	t := bytes.NewBufferString(localTarget)
+	go upgrader(fedClient, federatedCurrent, federatedTarget)
 
 	for _, client := range clients {
-		go upgrader(client, c, t)
+		go upgrader(client, localCurrent, localTarget)
 	}
 
 	//Waiting for all upgraders to finish (successful or not)
@@ -258,11 +268,11 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 
 	select {
 	case err = <-errChan:
-		return &rudderAPI.UpgradeReleaseResponse{}, err
+		return err
 	default:
 	}
 
-	return &rudderAPI.UpgradeReleaseResponse{}, err
+	return nil
 }
 
 func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudderAPI.ReleaseStatusRequest) (*rudderAPI.ReleaseStatusResponse, error) {
