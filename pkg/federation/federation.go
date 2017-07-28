@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"strings"
 
+	"google.golang.org/grpc/grpclog"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	clientrest "k8s.io/client-go/rest"
@@ -66,7 +68,10 @@ func makeClient(cluster federation.Cluster) *kube.Client {
 
 	clientconfig := clientcmd.NewDefaultClientConfig(config, &clientcmd.ConfigOverrides{})
 
-	return kube.New(clientconfig)
+	c := kube.New(clientconfig)
+	c.Log = grpclog.Infof
+
+	return c
 }
 
 func makeFedClient() *kube.Client {
@@ -96,7 +101,10 @@ func makeFedClient() *kube.Client {
 
 	clientconfig := clientcmd.NewDefaultClientConfig(config, &clientcmd.ConfigOverrides{})
 
-	return kube.New(clientconfig)
+	c := kube.New(clientconfig)
+	c.Log = grpclog.Infof
+
+	return c
 }
 
 //Map all object kinds supported by Federation API. Source: https://kubernetes.io/docs/reference/federation/
