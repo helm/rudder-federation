@@ -18,6 +18,7 @@ package federation
 
 import (
 	"bytes"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc/grpclog"
@@ -197,7 +198,14 @@ func populateFederationConfig() error {
 		return err
 	}
 
-	cm, err := clientset.Core().ConfigMaps("kube-system").Get("federation-credentials", v1.GetOptions{})
+	namespace := os.Getenv("RUDDER_NAMESPACE")
+	if namespace == "" {
+		namespace = "kube-system"
+	}
+
+	grpclog.Infof("Taking federations credentials from %s namespace", namespace)
+
+	cm, err := clientset.Core().ConfigMaps(namespace).Get("federation-credentials", v1.GetOptions{})
 
 	if err != nil {
 		return err

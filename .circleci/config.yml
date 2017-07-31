@@ -5,9 +5,10 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.8
-    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+      - image: nebril/rudder-fed-e2e
+    working_directory: /go/src/github.com/kubernetes-helm/rudder-federation
     steps:
       - checkout
-      - setup_remote_docker
+      - setup_remote_docker:
+          version: 17.05.0-ce
       - run: make e2e
