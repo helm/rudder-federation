@@ -14,7 +14,6 @@ config_map = {
     "kind": "ConfigMap",
     "metadata": {
         "name": "federation-credentials",
-        "namespace": "kube-system",
     },
     "data": {
         "type": "tls",

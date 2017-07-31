@@ -18,9 +18,9 @@ BINDIR    := $(CURDIR)/bin
 BINARIES  := rudder
 
 # dind options
-K8S_CLUSTER_MARKER = .k8s-cluster
-K8S_VERSION ?= v1.5
+K8S_VERSION ?= v1.7
 HELM_BINARY_PATH ?= /tmp/
+GOPATH ?= /tmp/
 
 
 # Required for globs to work correctly
@@ -71,29 +71,28 @@ include versioning.mk
 
 
 .PHONY: img-in-dind
-img-in-dind: docker-build $(K8S_CLUSTER_MARKER)
+img-in-dind: docker-build
 	IMAGE_REPO=$(IMAGE_REPO) ./scripts/import.sh
 
 .PHONY: e2e
-e2e: $(K8S_CLUSTER_MARKER) img-in-dind prepare-helm
+#e2e: federation img-in-dind prepare-helm
+e2e:
 	go test -c -o e2e.test ./e2e/
-	PATH=$(PATH):$(HELM_BINARY_PATH)/linux-amd64 ./e2e.test --cluster-url=http://0.0.0.0:8080
+	PATH=$(HELM_BINARY_PATH)/linux-amd64:$(GOPATH)/src/k8s.io/kubernetes/_output/bin ./e2e.test --cluster-url="$(shell kubectl cluster-info | head -n1 | cut -f6 -d' ' | sed -r 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g')" --use-rudder
 
 .PHONY: clean-all
-clean-all: clean clean-k8s
+clean-all: clean clean-federation
 
-.PHONY: clean-k8s
-clean-k8s:
-	./kubeadm-dind-cluster/fixed/dind-cluster-$(K8S_VERSION).sh clean
-	-rm $(K8S_CLUSTER_MARKER)
+.PHONY: clean-federation
+clean-federation:
+	./scripts/federation-clean.sh
 
-$(K8S_CLUSTER_MARKER):
-	if [ ! -d "kubeadm-dind-cluster" ]; then git clone https://github.com/Mirantis/kubeadm-dind-cluster.git; fi
-	./kubeadm-dind-cluster/fixed/dind-cluster-$(K8S_VERSION).sh up
-	touch $(K8S_CLUSTER_MARKER)
+.PHONY: federation
+federation:
+	./scripts/federation.sh
 
 .PHONE: prepare-helm
 prepare-helm:
 	pushd $(HELM_BINARY_PATH) \
-	&& curl https://kubernetes-helm.storage.googleapis.com/helm-v2.3.0-linux-amd64.tar.gz > helm.tar.gz \
+	&& curl https://kubernetes-helm.storage.googleapis.com/helm-v2.5.1-linux-amd64.tar.gz > helm.tar.gz \
 	&& tar xf helm.tar.gz && popd
