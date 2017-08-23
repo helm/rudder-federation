@@ -30,8 +30,7 @@ spec:
       - env:
         - name: TILLER_NAMESPACE
           value: kube-system
-        #image: gcr.io/kubernetes-helm/tiller:v2.5.0
-        image: nebril/tiller
+        image: gcr.io/kubernetes-helm/tiller:v2.6.0
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
@@ -72,7 +71,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: nebril/rudder-fed
+        image: mirantis/rudder-federation:v0.1
         imagePullPolicy: Never
         name: rudder
         ports:
