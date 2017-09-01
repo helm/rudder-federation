@@ -3,6 +3,12 @@
 ## Usage
 You need two things - Tiller with `--experimental-release` flag enabled, and this rudder available to Tiller. The easiest way to do it is to add container with federated rudder to Tiller deployment - check out [ruddered-tiller.yaml](manifests/ruddered-tiller.yaml).
 
+## Federation DNS
+If you want your deployments distributed across federation to be able to reach pods in other clusters (and you probably do), you need to take a few steps:
+- You need to have dns configured in your federation so that proper dns entries are created for federated deployments.
+- You need to override hostnames in your charts so they may be expended to federation dns name instead of local cluster name. You can do this by either:
+  - Changing your charts/overriding the hostname if the chart provides this option
+  - Using additional replacement logic provided by this rudder. Refer to examples/wp-values.yaml file. You need to provide a regular expression which will match the context of the hostname (this can be tricky, as usual with regexes). The `to` part of the `replace` is being rendered by go template with Federation Controller Deployment object retrieved using data in `fed-namespace` and `fed-controller-name`. You may avoid it if you know your federation name ahead of time.
 
 ## Test Environment
 To setup federation with two clusters:

@@ -77,7 +77,23 @@ func (r *ReleaseModuleServiceServer) Version(ctx context.Context, in *rudderAPI.
 func (r *ReleaseModuleServiceServer) InstallRelease(ctx context.Context, in *rudderAPI.InstallReleaseRequest) (*rudderAPI.InstallReleaseResponse, error) {
 	grpclog.Info("install")
 
-	federated, local, err := fedlocal.SplitManifestForFed(in.Release.Manifest)
+	manifest := in.Release.Manifest
+	replacements := fedlocal.GetReplacements(in)
+
+	if len(replacements) > 0 {
+		fedController, err := fedlocal.GetFederationControllerDeployment(in)
+		if err != nil {
+			grpclog.Infof("error getting federation controller")
+			return &rudderAPI.InstallReleaseResponse{}, err
+		}
+		manifest, err = fedlocal.ReplaceWithFederationDeployment(manifest, replacements, fedController)
+		if err != nil {
+			grpclog.Infof("error replacing replacements")
+			return &rudderAPI.InstallReleaseResponse{}, err
+		}
+	}
+
+	federated, local, err := fedlocal.SplitManifestForFed(manifest)
 
 	if err != nil {
 		grpclog.Infof("error splitting manifests: %v", err)

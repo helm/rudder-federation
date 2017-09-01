@@ -1,0 +1,5 @@
+replace:
+  - from: "(- name: MARIADB_HOST.*\n)( * value: )(.*)(\n)"
+    to: "$1$2$3.{{ index .ObjectMeta.Annotations \"federation.alpha.kubernetes.io/federation-name\" }}\n"
+fed-namespace: federation-system
+fed-controller-name: federation-controller-manager
