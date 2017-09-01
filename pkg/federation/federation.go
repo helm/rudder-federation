@@ -19,9 +19,13 @@ package federation
 import (
 	"bytes"
 	"os"
+	"regexp"
 	"strings"
+	"text/template"
 
 	"google.golang.org/grpc/grpclog"
+
+	"github.com/ghodss/yaml"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -31,7 +35,9 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/kubernetes/federation/apis/federation"
 	fedclient "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 
+	//"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/kube"
 	rudderAPI "k8s.io/helm/pkg/proto/hapi/rudder"
 
@@ -228,4 +234,77 @@ func populateFederationConfig() error {
 
 func init() {
 	populateFederationConfig()
+}
+
+type Replace struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+type ReplaceExtract struct {
+	Replace []Replace `json:"replace"`
+}
+
+func GetReplacements(req *rudderAPI.InstallReleaseRequest) []Replace {
+	raw := req.Release.Config.Raw
+	extractor := ReplaceExtract{}
+	err := yaml.Unmarshal([]byte(raw), &extractor)
+	if err != nil {
+		grpclog.Warningln("Error while unmarshalling raw config: ", err)
+	}
+
+	return extractor.Replace
+}
+
+type DeploymentExtractor struct {
+	Namespace string `json:"fed-namespace"`
+	Name      string `json:"fed-controller-name"`
+}
+
+func GetFederationControllerDeployment(req *rudderAPI.InstallReleaseRequest) (*extensions.Deployment, error) {
+	raw := req.Release.Config.Raw
+	extractor := DeploymentExtractor{
+		Namespace: "federation-system",
+		Name:      "federation-controller-manager",
+	}
+	err := yaml.Unmarshal([]byte(raw), &extractor)
+	if err != nil {
+		grpclog.Warningln("Error while unmarshalling raw config: ", err)
+	}
+
+	clientset, err := kube.New(nil).ClientSet()
+	if err != nil {
+		grpclog.Errorf("Cannot initialize Kubernetes connection: %s", err)
+		return nil, err
+	}
+
+	dep, err := clientset.Extensions().Deployments(extractor.Namespace).Get(extractor.Name, v1.GetOptions{})
+	if err != nil {
+		grpclog.Errorf("Cannot get deployment %s from ns %s: %v", extractor.Name, extractor.Namespace, err)
+	}
+	return dep, err
+}
+
+func ReplaceWithFederationDeployment(manifest string, replacements []Replace, controller *extensions.Deployment) (string, error) {
+	for _, rep := range replacements {
+		var tpl bytes.Buffer
+		t, err := template.New("").Parse(rep.To)
+		if err != nil {
+			grpclog.Errorf("Could not parse template %s: %v", rep.To, err)
+			return manifest, err
+		}
+		err = t.Execute(&tpl, controller)
+		if err != nil {
+			grpclog.Errorf("Could not execute template %s: %v", rep.To, err)
+			return manifest, err
+		}
+
+		reg, err := regexp.Compile(rep.From)
+		if err != nil {
+			grpclog.Errorf("Could not compile regex %s: %v", rep.From, err)
+			return manifest, err
+		}
+
+		manifest = reg.ReplaceAllString(manifest, tpl.String())
+	}
+	return manifest, nil
 }

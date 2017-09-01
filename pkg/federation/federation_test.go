@@ -17,7 +17,11 @@ limitations under the License.
 package federation
 
 import (
+	"strings"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 func TestSplitManifestForFed(t *testing.T) {
@@ -108,5 +112,137 @@ spec:
 
 	if local != expectedLocal {
 		t.Errorf("local other than expected. expected:\n%v\ngot:\n%v", expectedLocal, local)
+	}
+}
+
+var manifest = `---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp4-mariadb
+type: Opaque
+data:
+  mariadb-root-password: ""
+  mariadb-password: ""
+---
+`
+
+var deployment = extensions.Deployment{
+	ObjectMeta: metav1.ObjectMeta{
+		Annotations: map[string]string{
+			"federation.alpha.kubernetes.io/federation-name": "federation",
+			"federations":                                    "federation=example.com",
+		},
+	},
+}
+
+func TestReplaceWithFederationDeploymentStaySame(t *testing.T) {
+	replacements := []Replace{
+		Replace{
+			From: "non-existent",
+			To:   "non-existen",
+		},
+	}
+	replaced, err := ReplaceWithFederationDeployment(manifest, replacements, &deployment)
+
+	if err != nil {
+		t.Fatalf("Expected no errors, got %v", err)
+	}
+
+	if replaced != manifest {
+		t.Fatalf("Expected replaced to be the same as manifest")
+	}
+}
+
+func TestReplaceWithFederationDeploymentSimpleReplace(t *testing.T) {
+	replacements := []Replace{
+		Replace{
+			From: `mariadb-root-password: ""`,
+			To:   `mariadb-root-password: newer-root-password`,
+		},
+	}
+	replaced, err := ReplaceWithFederationDeployment(manifest, replacements, &deployment)
+
+	if err != nil {
+		t.Fatalf("Expected no errors, got %v", err)
+	}
+
+	if replaced != strings.Replace(manifest, `mariadb-root-password: ""`, `mariadb-root-password: newer-root-password`, 1) {
+		t.Fatalf("Replacement not as expected")
+	}
+}
+
+func TestReplaceWithFederationDeploymentTemplateReplace(t *testing.T) {
+	replacements := []Replace{
+		Replace{
+			From: `mariadb-root-password: ""`,
+			To:   `mariadb-root-password: {{ index .ObjectMeta.Annotations "federations" }}`,
+		},
+	}
+	replaced, err := ReplaceWithFederationDeployment(manifest, replacements, &deployment)
+
+	if err != nil {
+		t.Fatalf("Expected no errors, got %v", err)
+	}
+
+	if replaced != strings.Replace(manifest, `mariadb-root-password: ""`, `mariadb-root-password: federation=example.com`, 1) {
+		t.Logf("manifest: %s\nreplaced: %s\n", manifest, replaced)
+		t.Fatalf("Replacement not as expected")
+	}
+}
+
+func TestReplaceWithFederationDeploymentMultilineTemplateReplace(t *testing.T) {
+	replacements := []Replace{
+		Replace{
+			From: `type: Opaque
+data:
+  mariadb-root-password: ""
+  mariadb-password: ""`,
+			To: `type: Opaque
+data:
+  mariadb-root-password: {{ index .ObjectMeta.Annotations "federations" }}
+  mariadb-password: {{ index .ObjectMeta.Annotations "federations" }}`,
+		},
+	}
+	replaced, err := ReplaceWithFederationDeployment(manifest, replacements, &deployment)
+
+	if err != nil {
+		t.Fatalf("Expected no errors, got %v", err)
+	}
+
+	if replaced != strings.Replace(manifest, `""`, `federation=example.com`, 2) {
+		t.Logf("manifest: %s\nreplaced: %s\n", manifest, replaced)
+		t.Fatalf("Replacement not as expected")
+	}
+}
+
+func TestReplaceWithFederationDeploymentRegexFrom(t *testing.T) {
+	replacements := []Replace{
+		Replace{
+			From: `mariadb-.*\n`,
+			To: `{{ index .ObjectMeta.Annotations "federations" }}
+`,
+		},
+	}
+	replaced, err := ReplaceWithFederationDeployment(manifest, replacements, &deployment)
+
+	if err != nil {
+		t.Fatalf("Expected no errors, got %v", err)
+	}
+	expected := `---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wp4-mariadb
+type: Opaque
+data:
+  federation=example.com
+  federation=example.com
+---
+`
+
+	if replaced != expected {
+		t.Logf("expected: %s\nreplaced: %s\n", expected, replaced)
+		t.Fatalf("Replacement not as expected")
 	}
 }
