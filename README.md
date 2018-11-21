@@ -1,3 +1,6 @@
+|![](https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Warning.svg/156px-Warning.svg.png) | Federation rudder is no longer supported.
+|---|---|
+
 # Federation rudder (helm release plugin) which enables federation support for your Helm charts.
 
 ## Usage
